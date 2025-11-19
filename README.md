@@ -1,4 +1,4 @@
-# Technical Writing Portfolio
+# technical-writing-portfolio
 
 Collection of technical articles and guides by Travis Lelle.
 

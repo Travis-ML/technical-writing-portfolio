@@ -1,11 +1,3 @@
----
-title: "Machine Learning & Deep Learning Mastery Guide: A Comprehensive Technical Reference"
-thumbnail: ./ml_dl_thumbnail.png
-authors:
-- user: TravisML
-  guest: true
----
-
 # Machine Learning & Deep Learning Mastery Guide
 
 **Author:** Travis Lelle ([travis@travisml.ai](mailto:travis@travisml.ai))  
