@@ -1,5 +1,10 @@
 # AWS Security Architecture: A Foundation in IAM
 
+**Author:** Travis Lelle ([travis@travisml.ai](mailto:travis@travisml.ai))  
+**Published:** November 2025
+
+---
+
 ## Table of Contents
 1. [Introduction](#introduction)
 2. [IAM Core Concepts](#iam-core-concepts)
