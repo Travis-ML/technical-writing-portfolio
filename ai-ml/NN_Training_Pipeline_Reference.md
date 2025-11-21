@@ -8,6 +8,10 @@
 This guide breaks down every step of training a neural network, with current industry-standard tools, algorithms, and methods. Each section includes common choices, when to use them, and practical considerations.
 
 ---
+<div align="center">
+![Neural Network Training Pipeline](images/nn_training_pipeline.svg)
+</div>
+---
 
 ## 1. Data Loading & Preprocessing
 
