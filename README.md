@@ -11,6 +11,7 @@ WhoAmI: I'm a security engineer with a specialization in Data science, Data anal
 ### AI/ML
 - [Machine Learning & Deep Learning Mastery Guide](./ai-ml/ML_DL_Mastery_Guide.md)
 - [Advanced Prompt Engineering: Theory, Practice, and Implementation](./ai-ml/PromptEngineering_Guide.md)
+- [Neural Network Training Pipelines: A Complete Reference Guide](./NN_Training_Pipeline_Reference.md)
 
 ### Cloud Infrastructure
 - [AWS Security Architecture: A Foundation in IAM](./cloud-infrastructure/aws_security_architecture.md)
