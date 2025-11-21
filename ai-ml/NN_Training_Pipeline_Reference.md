@@ -9,7 +9,9 @@ This guide breaks down every step of training a neural network, with current ind
 
 ---
 <div align="center">
+
 ![Neural Network Training Pipeline](z-assets/nn_training_pipeline.svg)
+
 </div>
 ---
 
