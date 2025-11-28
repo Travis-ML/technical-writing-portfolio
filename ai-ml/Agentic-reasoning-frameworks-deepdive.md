@@ -8,14 +8,14 @@
 
 ## Introduction: Why Different Reasoning Patterns Matter
 
-Traditional LLM interactions are fundamentally reactive—you ask, they respond. But complex tasks require **planning, tool use, reflection, and recovery from failures**. The question facing AI engineers today is: how do you orchestrate these capabilities effectively?
+Traditional LLM interactions are fundamentally reactive, you ask, they respond. But complex tasks require **planning, tool use, reflection, and recovery from failures**. The question facing AI engineers today is: how do you orchestrate these capabilities effectively?
 
 The answer depends on your task's uncertainty profile:
 - Can you plan everything upfront? (Low uncertainty)
 - Do you need to adapt after every observation? (High uncertainty)  
 - Can you afford to explore multiple paths? (Computational budget)
 
-This article dissects the leading agentic design patterns—ReAct, ReWOO, Reflexion, Tree of Thoughts, and CodeAct—offering real-world tradeoff analyses on latency, cost, and complexity. By understanding how to compose these patterns into resilient hybrid systems, you'll gain the concrete knowledge necessary to move your AI projects from fragile proof-of-concepts to robust, scalable production solutions.
+This article dissects the leading agentic design patterns: ReAct, ReWOO, Reflexion, Tree of Thoughts, and CodeAct, offering real-world tradeoff analyses on latency, cost, and complexity. By understanding how to compose these patterns into resilient hybrid systems, you'll gain the concrete knowledge necessary to move your AI projects from fragile proof-of-concepts to robust, scalable production solutions.
 
 ---
 
@@ -108,7 +108,7 @@ Plan: Synthesize the answer
 #E3 = LLM["What is the hometown of #E1 given #E2"]
 ```
 
-Workers execute these steps sequentially, substituting variables as they go. The Solver never sees the full conversation history—just the variables and results (2).
+Workers execute these steps sequentially, substituting variables as they go. The Solver never sees the full conversation history, just the variables and results (2).
 
 ### Performance Numbers
 
@@ -140,7 +140,7 @@ As IBM's research notes, "ReWOO would not be optimal for debugging Python code, 
 
 ### The Core Innovation
 
-Reflexion takes a fundamentally different approach from both ReAct and ReWOO. Instead of focusing purely on planning or execution patterns, Reflexion introduces **verbal reinforcement learning**—the ability for agents to learn from their mistakes across multiple episodes (4).
+Reflexion takes a fundamentally different approach from both ReAct and ReWOO. Instead of focusing purely on planning or execution patterns, Reflexion introduces **verbal reinforcement learning** - the ability for agents to learn from their mistakes across multiple episodes (4).
 
 Reflexion converts feedback from the environment into linguistic self-reflection, which becomes context for the LLM agent in subsequent episodes, enabling rapid learning from prior mistakes (4).
 
@@ -549,7 +549,7 @@ You can't improve what you don't measure, and agent observability is becoming as
 
 ### 5. Model Context Protocol (MCP) Standardization
 
-MCP is emerging as a standard for tool integration—think of it as "USB for AI tools" (13). This standardization enables:
+MCP is emerging as a standard for tool integration - think of it as "USB for AI tools" (13). This standardization enables:
 
 - Agents to swap tools without rewriting integration logic
 - Consistent interfaces across different agent frameworks
@@ -561,13 +561,13 @@ MCP is emerging as a standard for tool integration—think of it as "USB for AI 
 
 ### For ML Engineers & Researchers
 
-1. **Start with LangGraph** for understanding stateful workflows—maps directly to distributed systems concepts and event-driven architectures
+1. **Start with LangGraph** for understanding stateful workflows - maps directly to distributed systems concepts and event-driven architectures
 
-2. **Study ReWOO vs ReAct** as a token optimization case study—perfect for cost analysis and efficiency research
+2. **Study ReWOO vs ReAct** as a token optimization case study - perfect for cost analysis and efficiency research
 
-3. **Explore CodeAct** for ML workflows—imagine agents that write preprocessing code, run experiments, and analyze results autonomously
+3. **Explore CodeAct** for ML workflows - imagine agents that write preprocessing code, run experiments, and analyze results autonomously
 
-4. **Experiment with Reflexion** for iterative improvement—could you build an agent that improves LSTM hyperparameters based on validation loss feedback?
+4. **Experiment with Reflexion** for iterative improvement - could you build an agent that improves LSTM hyperparameters based on validation loss feedback?
 
 ### For Production Teams
 
@@ -577,7 +577,7 @@ MCP is emerging as a standard for tool integration—think of it as "USB for AI 
 
 3. **Build hybrid systems**: Few real-world problems fit perfectly into one pattern
 
-4. **Plan for failure**: Agents will hit edge cases—design recovery mechanisms from the start
+4. **Plan for failure**: Agents will hit edge cases - design recovery mechanisms from the start
 
 ### For Security Engineers
 
@@ -585,7 +585,7 @@ MCP is emerging as a standard for tool integration—think of it as "USB for AI 
 
 2. **Monitor token budgets**: Prevent denial-of-wallet attacks from infinite reasoning loops
 
-3. **Validate tool outputs**: Don't trust external API responses blindly—agents can be manipulated through tool injection
+3. **Validate tool outputs**: Don't trust external API responses blindly - agents can be manipulated through tool injection
 
 4. **Audit trails**: Log complete agent trajectories for security review and compliance
 
@@ -595,11 +595,11 @@ MCP is emerging as a standard for tool integration—think of it as "USB for AI 
 
 The landscape of agentic reasoning frameworks has matured rapidly from 2023-2025. ReAct established the foundation for adaptive agents, ReWOO proved efficiency matters at scale, Reflexion showed agents can learn from mistakes, and Tree of Thoughts demonstrated the value of exploration. CodeAct opened up entirely new action spaces through code generation.
 
-The frameworks implementing these patterns—LangGraph, CrewAI, AutoGen, and others—each optimize for different use cases. There is no universal "best" framework; the right choice depends on your task complexity, team capabilities, and production requirements.
+The frameworks implementing these patterns - LangGraph, CrewAI, AutoGen, and others - each optimize for different use cases. There is no universal "best" framework; the right choice depends on your task complexity, team capabilities, and production requirements.
 
 As we move into 2025, the trend is clear: **hybrid architectures** that combine multiple reasoning patterns, **systematic optimization** through tools like DSPy, **cost-aware routing** between patterns, and **robust observability** for production systems.
 
-The agents of tomorrow won't just use one reasoning pattern—they'll dynamically select the right approach for each task, learn from their mistakes, and operate within well-defined safety and cost boundaries. Understanding these fundamental patterns is the foundation for building those systems.
+The agents of tomorrow won't just use one reasoning pattern - they'll dynamically select the right approach for each task, learn from their mistakes, and operate within well-defined safety and cost boundaries. Understanding these fundamental patterns is the foundation for building those systems.
 
 ---
 
