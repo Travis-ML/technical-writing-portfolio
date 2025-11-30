@@ -1,0 +1,309 @@
+# Unsupervised Deep Learning for Insider Threat Detection in Security Log Streams
+
+**Author:** Travis Lelle - Security Engineer and ML/AI Researcher
+
+**Date:** November 29, 2025
+
+## Abstract
+
+Organizations face rising challenges in detecting insider threats such as lateral movement, data exfiltration, and living on the land (LOTL) attacks that blend into normal operations. Traditional rule-based Security Information and Event Management (SIEM) systems often miss these subtle anomalies or overwhelm analysts with alerts. In this paper, I propose a cloud-deployed, unsupervised deep learning framework (using PyTorch) for high-recall anomaly detection in heterogeneous security logs. I detail how to normalize multi-format logs (JSON, syslog, CSV, XML) into a unified schema for processing, optimal feature extraction from sources like firewalls, EDR, WAF, cloud (AWS/Azure) logs, Active Directory, and Office 365, and how to convert these events into tensors suitable for neural network models. I explore neural network architectures including Long Short-Term Memory (LSTM) recurrent networks and autoencoders, discussing optimal layer sizes, activation functions, and number of layers to effectively model normal behavior and flag deviations. The proposed model learns typical patterns of user and system activity in streaming logs without any prior labeling, and raises alerts when activity deviates significantly from learned norms. Emphasis is placed on achieving high recall (catching elusive insider behaviors) while keeping false positives to a manageable level through model tuning and thresholding. I include implementation details, example code snippets, and discuss deployment considerations in a realistic mid-size enterprise setting (with limited GPU resources and cloud-based data pipelines). Experimental insights from prior research and industry practices are cited to demonstrate that this approach can detect insider threat indicators (for example anomalous logon patterns or unusual data transfers) that would likely go unnoticed by legacy monitoring, all with minimal supervision and in near real-time.
+
+## Introduction
+
+Insider threats, malicious or negligent activities by trusted users, pose a significant security risk due to their subtle nature. Behaviors such as unauthorized lateral movement across systems, stealthy data exfiltration, and abuse of legitimate admin tools (LOTL techniques) are often missed by traditional rule-based monitoring, as insiders operate within expected privileges. The volume and velocity of enterprise log data (from endpoints, servers, network devices, cloud services, and so on) further complicate detection; these heterogeneous, high-frequency streams far exceed human analysts' capacity to manually spot anomalies. Supervised learning approaches are of limited use, since ground truth labels for insider attacks are scarce. Real incidents are rare and often only discovered after the fact, making it infeasible to train a fully supervised classifier.
+
+Unsupervised deep learning has emerged as a promising approach for this domain, aiming to learn a baseline of "normal" behavior from historical log data and to flag deviations without requiring labeled examples of attacks. Prior research has demonstrated that deep neural networks can model complex sequences and patterns in system logs, achieving superior anomaly detection accuracy over traditional statistical methods. For instance, an LSTM-based system called DeepLog modeled system logs as natural language sequences and detected anomalies when events deviated from learned patterns. DeepLog achieved nearly 100 percent detection accuracy on a benchmark log dataset by learning from only one percent of normal log entries, illustrating the power of deep learning to generalize normal behavior from limited data. Likewise, Tuor and colleagues (2018) showed that deep neural networks and RNNs outperformed PCA, one-class SVM, and Isolation Forest baselines in detecting insider threat activities in streaming logs. The best model's alerts for malicious events fell in the 95th percentile of the anomaly score distribution, meaning true incidents were ranked among the top outliers. These successes motivate my approach to apply neural networks, particularly recurrent networks and autoencoders, to the insider threat use-case where high recall (catching as many true incidents as possible) is prioritized over absolute precision. By tuning the model to recognize the subtle signals of malicious insiders (for example unusual login patterns or abnormal data access volumes at odd hours), the system can serve as an automated filter that drastically reduces the workload on security analysts.
+
+In this paper, I present a comprehensive framework for building such an unsupervised anomaly detection system on cybersecurity logs. I address the end-to-end pipeline, from log collection and normalization, through feature extraction and tensor conversion, to the neural network model architecture and training regime. Key research questions include: What is the optimal way to normalize and structure multi-source logs for analysis? What network architecture (layers, units, activation functions) best captures normal versus abnormal patterns in security events? How can this system be deployed and maintained in a cloud environment under realistic resource constraints? Through extensive literature review and practical reasoning, I provide recommendations tailored to a mid-sized organization's capabilities. The proposed solution uses PyTorch for model development due to its flexibility and community support, but the design could be implemented in other frameworks as well.
+
+Ultimately, my goal is to enable earlier detection of insider threat behaviors that elude signature-based tools, with an approach that is practical for real-world deployments. The system should integrate with existing log management processes (for example SIEMs), operate within a cloud budget (for example using a handful of GPU-enabled instances rather than massive clusters), and produce meaningful alerts with low noise. I organize the remainder of this paper as follows: first, I discuss the variety of data sources and the crucial step of log normalization. Next, I describe feature extraction and how to represent events as model inputs. I then explain the neural network architecture, including the size and activation choices for high-performing anomaly detection. Afterward, I outline the model training procedure and inference deployment, with an emphasis on streaming data handling and cloud optimization. I conclude with a discussion of how this approach addresses insider threat scenarios and the expected performance and impact in an enterprise Security Operations Center (SOC).
+
+## Background and Related Work
+
+Anomaly detection in security logs has been studied through various approaches. Early methods include statistical techniques and data mining, such as using PCA on log feature counts or mining invariant rules from log keys. While these methods had success in specific scenarios, they struggle to capture the full complexity of modern attacks and often cannot operate effectively in real-time streaming contexts. Machine learning researchers have increasingly turned to unsupervised learning for intrusion and insider threat detection, framing it as an anomaly or outlier detection problem. Chandola and colleagues (2009) noted that anomaly detection on multivariate data streams, like concurrent event sequences from many entities, remained a challenging open problem and highlighted the need for advanced techniques.
+
+In recent years, deep learning models have shown great promise by automatically learning complex patterns from raw data. Several works have applied neural networks to cybersecurity logs:
+
+- DeepLog (2017): Du and colleagues introduced an LSTM-based model that treats system log messages as a sequence of words (log "keys" or templates). By training on sequences from normal execution, the LSTM learns the expected ordering of events. An event that does not conform to the learned sequence probability (for example an unexpected log entry given the recent context) is flagged as anomalous. DeepLog also incorporates monitoring of numeric parameters in logs, such as execution durations or error counts, by training separate models for those values. This combination allows detection of both control-flow anomalies and performance anomalies. DeepLog outperformed earlier log mining approaches and could be updated incrementally online, an important property for adapting to new normal patterns over time.
+
+- Deep models for user behavior (2018): Tuor and colleagues proposed an online unsupervised deep learning system to detect insider threats in structured data streams. Their approach continuously trains neural networks on streaming logs, profiling each user's typical behavior. Two architectures were studied, a deep feed-forward neural network that looks at aggregated user activity features per day, and a recurrent neural network (LSTM) that looks at sequences of user events. Notably, the models could break down anomaly scores by feature, aiding analyst interpretability, for example showing that "the user copied an abnormally large number of files to removable media between 12am and 6am" contributed to the anomaly. In experiments on the the data, the deep models significantly outperformed classical baselines like one-class SVM, Isolation Forest, and PCA, achieving higher recall of true insider actions for a given alert budget. The best model's alerts for malicious events fell in the 95th percentile of the anomaly score distribution, meaning true incidents were ranked among the top outliers.
+
+- Autoencoder based methods: Other researchers have explored autoencoders and hybrid models. For example, Veeramachaneni and colleagues (2016) used an ensemble combining a neural autoencoder, PCA reconstruction, and probabilistic models to detect anomalies in web and firewall logs. They aggregated numeric features over time windows (counts of events, data volumes, and so on) and employed an online learning approach with periodic model updates and analyst feedback integration. Autoencoders are a natural fit for unsupervised anomaly detection: by learning to compress and reconstruct "normal" data, they produce higher reconstruction error on anomalies, which can be used as an anomaly score.
+
+- Industry UEBA systems: Commercial User and Entity Behavior Analytics (UEBA) solutions also leverage unsupervised techniques, often statistical or clustering based, to profile normal behavior for each user or device. While not necessarily deep learning, these systems validate the general approach of baseline profiling. They highlight the importance of data enrichment and context (linking accounts, understanding user roles) to improve detection of malicious insider actions.
+
+Research gaps: The literature indicates that deep learning can greatly improve detection capability, but implementing such a system requires careful consideration of data preparation and model design. Key challenges include handling the heterogeneous formats of logs, scaling to high data rates, and maintaining a high recall without overwhelming analysts with false positives. My work builds on the above by providing a cohesive design tailored to practical deployment. I incorporate ideas like log parsing (from DeepLog), online model adaptation, and per-user analysis, while emphasizing cloud-based deployment and efficiency for a mid-size enterprise setting. In the following sections, I address these challenges one by one, starting with how to normalize and ingest the varied log data that forms the input to the anomaly detection model.
+
+## Data Sources and Log Normalization
+
+Insider threat detection requires correlating events across many data sources in an organization's environment. I target logs from:  
+- Network security devices, for example firewall logs (connections allowed or blocked, data volumes, IP addresses), web proxy logs, VPN gateway logs.  
+- Endpoint and server logs, such as EDR (Endpoint Detection and Response) agent logs, host-based sensors like Sysmon on Windows, OS audit logs, and anti-malware logs.  
+- Identity and access management logs, for example Windows Active Directory authentication events (logon successes or failures, Kerberos tickets), Azure AD or Okta logs, privilege use events.  
+- Cloud service logs, such as AWS CloudTrail (API calls), AWS VPC flow logs, Azure Activity Logs, and so on.  
+- Application and SaaS logs like Office 365 activity logs (email events, file shares), internal app logs, database audit logs.
+
+Log normalization is a critical preprocessing step. Logs from different sources can be in JSON, syslog, CSV, or XML. They contain different field names and value formats (IP addresses, usernames, timestamps in varying formats, numeric counts, and so on).
+
+Normalization process:
+
+1. Parsing the raw logs: Use standard parsers (JSON parsers for JSON logs, regex or syslog parsers for text logs, CSV parsers for comma-separated logs). Tools like Logstash, Fluentd, or custom Python scripts with libraries like `python-logstash` or `xmltodict` can be used.
+
+2. Schema mapping: Identify the critical fields present in most logs. A baseline schema might include:
+   - `timestamp`: The time the event occurred (converted to a standard format, for example ISO 8601).
+   - `user_id` or `username`: The user associated with the event. This is key for profiling user behavior.
+   - `source_ip` and `dest_ip`: IP addresses of source and destination systems.
+   - `event_type` or `action`: A categorical field describing what happened (for example "logon", "file_access", "network_connection", "process_execution", and so on). This requires harmonizing event codes from different sources into a common taxonomy.
+   - `resource` or `object`: The resource affected by the event (file path, application name, host name).
+   - `result` or `status`: Whether the action succeeded or failed (for example "success", "failure", "blocked").
+   - `data_volume` or `bytes_transferred`: Numeric fields capturing volume of data in network or data transfer events.
+   - `process_name` and `command_line`: For endpoint logs, capturing process execution details.
+   - `geolocation` (optional): If available, the geographic location from which an event originated (based on IP address).
+
+3. Enrichment: Enrich logs with contextual information. For example, map IP addresses to known internal assets, tag user accounts with roles or departments, resolve hostnames, or tag network zones (DMZ, internal, VPN, and so on). This metadata helps the model learn contextual anomalies (for example a typical user from Finance accessing an Engineering server). Enrichment can be done in the ingestion pipeline (for example Logstash filters) or in a stream processing layer (for example AWS Lambda functions or Spark transformations).
+
+4. Unified output: Once parsed and mapped, output each event as a JSON document adhering to the unified schema. This can be stored in a central data lake (for example AWS S3 in Parquet format for batch processing, or sent to a stream like Kinesis for real-time ingestion).
+
+Example: Consider a Windows Security Event log (for example Event ID 4624 for successful logon) and an AWS VPC flow log. The Windows event might have fields like `SubjectUserName` (user), `IpAddress` (source IP), and `TargetDomainName`. The VPC flow log has `srcaddr`, `dstaddr`, `action`, `bytes`. After normalization, both events appear as:
+
+```json
+{
+  "timestamp": "2025-11-29T14:32:01Z",
+  "user_id": "alice",
+  "source_ip": "10.0.0.15",
+  "dest_ip": "172.16.1.10",
+  "event_type": "network_connection",
+  "result": "success",
+  "data_volume": 5120,
+  "source": "vpc_flow_log"
+}
+```
+
+```json
+{
+  "timestamp": "2025-11-29T14:33:22Z",
+  "user_id": "alice",
+  "source_ip": "192.168.1.100",
+  "dest_ip": "10.0.0.50",
+  "event_type": "logon",
+  "result": "success",
+  "resource": "DC01",
+  "source": "windows_security"
+}
+```
+
+Now both logs share common fields, enabling cross-correlation and consistent model inputs. I will rely on this normalized format going forward.
+
+## Feature Extraction and Tensor Representation
+
+Once logs are normalized, the next step is feature extraction for the neural network. Neural networks take numeric tensors as input. I need to transform each event, or sequences of events, into tensors.
+
+Approaches for feature extraction:
+
+Categorical fields: Fields like `event_type`, `user_id`, `source_ip`, etc. are categorical (they take on values from a finite set). I use embeddings to convert these to dense vectors. Each unique value in a category is assigned an index, and the network learns an embedding (a small dense vector) for each index. For example, if `event_type` has 100 possible types, the model can learn 100 embeddings of dimension 16 (embedding size is a hyperparameter).
+
+Numeric fields: Features like `data_volume` or `bytes_transferred` are continuous. These can be normalized (for example z-score normalization based on training data statistics) and directly concatenated to the feature vector. Normalization helps the neural network converge faster. If the values span orders of magnitude, consider a log-transform (for example `log(1 + data_volume)`) before normalizing.
+
+Temporal features: The `timestamp` itself can be transformed into cyclical features or discrete time bins. For example, extract hour-of-day and day-of-week, then one-hot encode or embed them. This helps the model learn patterns like "this user never logs in at 3am," making a 3am login anomalous.
+
+Sequence representation (for LSTM models):
+
+- Order events by `timestamp` per user (or per source IP if user is missing). Create sequences of events for each entity being monitored.
+- Each event in the sequence is represented by a feature vector combining the embeddings and numeric features. For example, if an event has `event_type`, `source_ip`, `dest_ip`, and `data_volume`, the event vector could be:  
+  `[embed(event_type), embed(source_ip), embed(dest_ip), normalized(data_volume)]`  
+  concatenated to form a single vector of dimension, say, d = 64.
+- Feed sequences of these vectors into the LSTM. For training, you might use a sliding window of the last N events (for example N=50) as one training example.
+
+Aggregated features (for autoencoder or feed-forward models):
+
+- Instead of sequences, aggregate events over time windows (for example hourly or daily). Compute summary statistics per user or IP: count of events, sum of data volumes, counts by event type (count of logons, file accesses, and so on), unique destination IPs accessed, ratio of failed to successful actions, time-of-day histogram, and so on.
+- This results in a feature vector per user per window, which is then input to an autoencoder or dense network. Feature engineering is crucial; choosing meaningful aggregations helps the model distinguish normal from abnormal.
+
+Example approach: Let's assume I focus on user-level monitoring. For each user, I maintain two models:
+
+1. An LSTM model that sees sequences of the user's events. Each event is represented as a feature vector derived from the normalized schema. If an event is `logon`, encode it with embeddings, if it's `file_access`, use embeddings for the action and file path, and so on.
+
+2. An autoencoder on aggregated features computed over short time windows (for example every hour or every day). The aggregated feature vector might be something like:  
+   `[num_logons, num_file_accesses, total_bytes_transferred, num_unique_destinations, num_failed_auths, avg_hour_of_day, ...]`  
+   These are continuous or count-based, normalized and fed into the autoencoder.
+
+The LSTM captures sequential patterns and the autoencoder captures profile deviations in aggregated metrics.
+
+Implementation details:
+
+- Vocabulary management: Keep dictionaries mapping categorical values to indices. For rare values that appear only once, replace them with an "unknown" token to avoid sparse embeddings.
+- Batch and padding: When training the LSTM, group sequences into batches. Pad shorter sequences to a fixed length so all sequences in a batch are the same length. Use a special padding index and ignore it in the loss computation (for example via masking in PyTorch).
+- Dynamic feature construction: New users or IPs appear over time. Maintain a global vocabulary that can grow, or periodically retrain the embedding layers. Alternatively, use fixed-size hash-based encoding for IPs/users if the number is extremely large.
+
+Ultimately, I must produce tensors in the shape expected by the models. For the LSTM: a batch of shape `(batch_size, sequence_length, feature_dim)`. For the autoencoder: `(batch_size, aggregated_feature_dim)`. I will describe the architectures next.
+
+## Neural Network Architecture
+
+I propose two complementary models that together detect diverse anomalies:
+
+### LSTM-Based Sequence Model
+
+The LSTM model operates on event sequences per user.
+
+Architecture design:
+
+- Input: A sequence of event vectors, each of dimension `d_event` (for example 64), and sequence length `T` (for example 50 events).
+- Embedding layers: Before the LSTM, each categorical feature is passed through an embedding layer. For example, if `event_type` has a vocabulary size `V_event_type = 100`, then an embedding layer of size `(100, 16)` transforms each event type into a 16-d vector. Similar embeddings for source IPs, dest IPs, and so on. The embeddings are then concatenated with numeric features (data volume, time of day) to form the full event vector of dimension `d_event`.
+- LSTM layer: A multi-layer LSTM processes these sequences. I suggest starting with 2 LSTM layers. Each layer has hidden size `h` (for example 128 or 256 units). The LSTM learns temporal dependencies: it can recognize that after a logon event, a file access is typical, but a rare or unusual event type is anomalous.
+  - The first LSTM layer outputs a sequence of hidden states `(h1, h2, ..., hT)`. The second LSTM layer processes these, producing refined hidden states.
+  - Finally, I may take the last hidden state `h_T` as a summary of the sequence.
+- Output prediction: For anomaly detection, one approach is next-event prediction. The model tries to predict the next event type or parameters given the sequence so far. Use a linear layer on top of the LSTM's output to map to a softmax distribution over event types (or numeric predictions for continuous values). During training, the model learns to predict what comes next in "normal" sequences. If the predicted event greatly differs from the actual event, the sequence is anomalous. For instance, if the model expects `event_type = file_access` with high probability but sees `event_type = rare_admin_command`, the likelihood is low, and the score is high.
+- Alternatively, I could use a one-class learning approach: train the LSTM to minimize reconstruction or prediction error on normal sequences and simply threshold the error at inference time.
+
+Activation functions: LSTM cells use tanh and sigmoid internally. In the final linear layer for classification or reconstruction, no activation or softmax for classification, or sigmoid or linear for numeric predictions are standard. Experiment with LayerNorm or Dropout if overfitting occurs.
+
+Number of layers and units: Start with two LSTM layers of 128 or 256 hidden units each. More layers (for example 3 or 4) can capture deeper patterns but risk overfitting if data is limited. The embedding dimension is often chosen as 10-20 percent of the vocabulary size, with 8 to 64 being common ranges. Feature dimension `d_event` might be in the range of 64-128 after concatenating embeddings and numeric features. Tune via validation.
+
+### Autoencoder for Profile Anomalies
+
+The autoencoder model works on aggregated user features for a given time window.
+
+Architecture design:
+
+- Input: A feature vector of dimension `d_profile` (for example 50 to 200 features, depending on how many aggregated stats I compute, for example counts of various event types, ratios, time distributions, and so on).
+- Encoder: A feed-forward network that compresses this input into a latent representation. For example:
+  - Dense layer: `d_profile -> 128` units, ReLU activation.
+  - Dense layer: `128 -> 64` units, ReLU.
+  - Bottleneck (latent layer): `64 -> 32` units, linear or ReLU. The dimensionality reduction forces the model to learn a compact representation of normal behavior.
+- Decoder: Mirrors the encoder, expanding back to the original dimension:
+  - Dense layer: `32 -> 64`, ReLU.
+  - Dense layer: `64 -> 128`, ReLU.
+  - Output layer: `128 -> d_profile`, linear activation (reconstructing the input).
+- Loss: Mean squared error (MSE) between input and reconstructed output. Train only on "normal" data (non-attack, typical usage). During inference, if reconstruction error for a user's profile is high, that user's behavior deviates from normal (an anomaly).
+
+Activation and layers: ReLU is a common choice for hidden layers in autoencoders, as it is simple and works well. Optionally, try Leaky ReLU or ELU to avoid dead neurons. Using 3 or 4 layers per encoder/decoder (resulting in 6-8 layers total) is reasonable. Too shallow might not capture complexity, too deep might overfit. Regularization via dropout (for example 10-20 percent dropout rate) or weight decay can help. Batch normalization can also stabilize training, though it can complicate interpretability of reconstruction error.
+
+Number of units: The bottleneck size is a key tuning parameter. A too-large bottleneck allows the model to simply memorize, while too small might lose important information. A bottleneck around one-third the input size is a starting point (if `d_profile=100`, use a bottleneck of 30-50 units). Hidden layers can be intermediate sizes, for example 100 -> 128 -> 64 -> 32 -> 64 -> 128 -> 100, or more symmetric like 100 -> 80 -> 60 -> 40 -> 60 -> 80 -> 100. Experimentation is needed.
+
+### Combining Models
+
+Both models run in parallel:
+
+- LSTM produces an anomaly score per sequence.
+- Autoencoder produces a score per profile window.
+- Scores can be combined by taking the maximum (flag if either model alerts) or by computing a weighted average. In practice, I might run them separately and treat alerts from either as candidates for analyst review. A more sophisticated fusion could involve meta-learning or ensemble classifiers, but a simple approach works well initially.
+
+### Model Training
+
+Training data and labels:
+
+Since this is unsupervised, I assume most of the historical data is normal. I train both models on a baseline period (for example one month of logs) where no major incidents occurred. If I have any confirmed attack instances, I exclude those from training.
+
+Training procedure for LSTM:
+
+- Prepare training sequences from normal user activity.
+- If predicting next event, I feed sequences `(e1, ..., et)` and train the model to predict `e_{t+1}`.
+- Loss function: Cross-entropy for categorical predictions (event type), MSE for numeric predictions.
+- Optimizer: Adam optimizer is standard. Learning rate around `1e-3` to `1e-4`, or use a scheduler that decays the learning rate.
+- Epochs and batch size: Typically train for 10-30 epochs. Batch size: for sequences, often smaller (for example 32 or 64 sequences per batch), depending on memory (LSTMs can be memory-intensive).
+- Validation: Hold out a validation set from the normal data. Monitor validation loss to avoid overfitting. Early stopping if validation loss stops improving.
+
+Training procedure for autoencoder:
+
+- Compute aggregated feature vectors for each user for each time window in the training period.
+- Train the autoencoder to reconstruct these feature vectors.
+- Loss: MSE between input and output.
+- Optimizer: Adam, learning rate around `1e-3`.
+- Batch size: Can be larger, for example 128 or 256, as the data is not sequential.
+- Epochs: Train for multiple epochs until the reconstruction error on a validation set stabilizes. Typically 20-50 epochs may suffice.
+
+Thresholding and anomaly scoring:
+
+- After training, both models produce a "normality score" for each input. For the LSTM, the score could be negative log-likelihood of the observed sequence given the model. For the autoencoder, the score is the reconstruction error (for example MSE).
+- Establish a threshold using the validation data. For example, set the threshold at the 95th or 99th percentile of scores on the normal validation set. Then, in production, any score above the threshold is flagged as an anomaly.
+- Tuning the threshold adjusts the trade-off between recall and precision. For insider threat detection, I prioritize high recall (catching more real incidents, even if that means some false positives). This might mean setting a slightly lower threshold to flag the top 5 percent of anomalies rather than top 1 percent.
+
+Hyperparameter tuning:
+
+- The architecture (number of LSTM layers, LSTM hidden size, autoencoder layer sizes, embedding dimensions) and training hyperparameters (learning rate, batch size, dropout rate) can be tuned via grid search or random search on a hold-out validation set. Given the unsupervised nature, rely on metrics like validation loss or reconstruction error. If some labeled anomalies are available (even synthetic or semi-labeled), I could use those for a more targeted validation.
+
+Online adaptation:
+
+- The model can be periodically retrained to adapt to new normal patterns. For example, monthly retraining on the most recent normal data ensures the baseline drifts with the organization's changing environment. I can also implement online learning techniques (for example updating the LSTM's hidden state or retraining the autoencoder incrementally), but incremental updates require careful checks to avoid drifting towards malicious behavior if an ongoing attack is in the data.
+
+## Deployment in the Cloud
+
+Deploying this system in a cloud environment (for example AWS or Azure) requires careful design for scalability, reliability, and cost.
+
+Architecture components:
+
+1. Log ingestion: Centralize logs via services like AWS Kinesis Data Streams or Azure Event Hubs. Agent-based collectors on endpoints send logs to the cloud stream.
+
+2. Data processing and normalization: Use streaming processors (AWS Lambda, AWS Kinesis Data Analytics, or a small cluster of stream processing jobs like Apache Flink or Spark Streaming) to normalize and parse logs in real-time. This produces the unified schema events, which are then written to a data lake (S3 in Parquet for batch analysis) and also forwarded to a queue or topic for the anomaly detection service to consume.
+
+3. Training pipeline: Initially, batch-train the models on historical data from S3. Use services like Amazon SageMaker or a self-managed EC2 instance with a GPU (for example a p3 or g4dn instance type with a T4 or V100 GPU) to run PyTorch training jobs. Once trained, save model checkpoints to S3.
+
+4. Inference (real-time anomaly detection):  
+   - Deploy an inference service that subscribes to the stream of normalized events. This could be an AWS Lambda triggered by Kinesis (for a fully serverless approach, though Lambda has limitations on execution time and memory; a 15 minute max execution time may not suit continuous stream processing, so consider container-based solutions).
+   - Alternatively, run a long-lived process in an ECS container or on an EC2 instance, using PyTorch in inference mode.
+   - Load the trained LSTM and autoencoder models from S3.
+   - Maintain per-user state (recent event sequences, aggregated counters). This can be stored in memory (for a single inference instance) or in a fast key-value store (for example Redis or DynamoDB) for scalability across multiple instances.
+
+Per-user state management:
+
+- As events arrive, update the user's sequence buffer. When the buffer reaches sequence length, score the sequence with the LSTM.
+- Simultaneously, aggregate events into time windows (for example hourly). At the end of each window, compute the profile feature vector and score it with the autoencoder.
+- Anomaly scores above thresholds trigger alerts, which can be sent to an SNS topic, written to a database, or pushed to a SIEM or incident management system.
+
+Scaling considerations:
+
+- The number of users and volume of events determine resource needs. If there are thousands of users and millions of events per hour, a single machine can still handle it if the models are small and inference is fast (neural network inference on CPU or GPU is typically very fast for small models). For large organizations, horizontally scale the inference service by partitioning users across multiple instances (for example hash the user_id and route events accordingly).
+- GPU vs CPU: During training, a GPU speeds up the process significantly (especially for LSTMs). For inference, if the models are small, a GPU may not be necessary; a decent CPU can handle the throughput. However, a GPU instance (for example an AWS g4dn instance with a T4 GPU) provides higher throughput and lower latency, and the cost difference is acceptable for a mid-size organization.
+
+Operational aspects:
+
+- Monitoring: Track model performance, alert rates, latency, and resource usage. If the alert rate suddenly spikes, investigate whether it's a real incident or a model drift issue.
+- Retraining: Schedule monthly or quarterly retraining on fresh normal data. Automate this via cron jobs or AWS Step Functions.
+- Storage: Model checkpoints are small (a few MB to a few hundred MB). Store them in S3 or equivalent. Training data (historical logs) can be large; use data retention policies and compression.
+
+Example workflow in AWS:
+
+- Logs flow into Kinesis Data Streams.
+- A Lambda or Kinesis Data Analytics application normalizes them, writes to S3 (for training data archive), and also sends them to a second Kinesis stream.
+- An ECS Fargate task runs the inference container:
+  - It subscribes to the event stream.
+  - For each event or batch of events, it updates the LSTM state per user and computes anomaly scores.
+  - It also maintains rolling aggregates and, periodically, builds feature vectors and runs the autoencoder.
+  - Alerts are written to an alerts index, an SNS topic, or sent to a SIEM.
+
+Resource sizing:
+
+- For a mid-size environment, a single GPU instance (for example a T4 class GPU VM) is usually sufficient. The models are small.
+- For lower-volume deployments, CPU-only inference is also feasible.
+
+Security and resilience:
+
+- Restrict access to the detection service.
+- Monitor health and performance.
+- Store model versions and input configurations for audit.
+
+## Discussion: Detecting Insider Threats with High Recall
+
+My proposed unsupervised neural approach aims to uncover subtle indicators of insider threats that are often missed.
+
+- Lateral movement: Abnormal access to new hosts, especially at odd hours, appears as sequence anomalies and profile anomalies.
+- Data exfiltration: Unusual data transfer volumes appear in profile features. Repeated unusual transfers show up as sequential deviations.
+- LOTL and privilege abuse: Unusual use of built-in tools (PowerShell, WMI) appears as novel or rare event types in a user's sequence.
+
+False positives mitigation: Personalized baselines reduce false positives because a behavior is only anomalous relative to that user's history and peer group. Some benign changes (role changes, project transitions) may cause temporary anomalies; retraining and feedback can gradually incorporate these as new normal.
+
+Limitations:
+
+- If malicious behavior perfectly mimics normal behavior, it cannot be flagged by anomaly detection.
+- Lack of labels makes quantitative evaluation harder.
+- Model quality depends on the cleanliness and representativeness of training data.
+
+## Conclusion
+
+I presented a detailed design for an unsupervised deep learning system to detect insider threats through anomaly detection in security log data. By normalizing logs from various sources into a unified schema and carefully selecting features indicative of malicious behaviors, effective ingestion of enterprise activity data is enabled.
+
+My proposed neural network architecture, combining an LSTM sequence model and an autoencoder profile model, captures both the sequential event patterns and aggregate behavior profiles of users and systems. The training procedure was outlined to adapt the model to unlabeled streaming data, including practical choices of batch size, learning rates, and threshold-setting to achieve high recall on anomalies while controlling false positive rates.
+
+This system is geared toward cloud deployment, using modest GPU resources and integrating with cloud-based log pipelines. It can operate in real-time, analyzing events as they occur and producing alerts for anomalies that likely correspond to insider threat tactics (lateral movement, data exfiltration, privilege abuse, and so on).
+
+The requirements (parsing logs, having a GPU machine for training or inference, and the know-how to fine-tune the models) are within reach for most mid-sized organizations, especially given the availability of open-source tools and cloud services. The blueprint outlined here serves as a practical guide for security engineers and AI practitioners to implement high-recall, unsupervised anomaly detection in their environments.
